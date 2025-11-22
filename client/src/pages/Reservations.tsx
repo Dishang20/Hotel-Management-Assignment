@@ -14,7 +14,7 @@ import { useAuth } from '@/hooks/useAuth'
 import type { ReservationStatus } from '@/types/database.types'
 
 export const Reservations = () => {
-  const { canManageReservations, loading: authLoading, canManageBills } = useAuth()
+  const { canManageReservations, loading: authLoading, canManageBills, role } = useAuth()
   const navigate = useNavigate()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingReservation, setEditingReservation] = useState<any>(null)
@@ -224,9 +224,35 @@ export const Reservations = () => {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  // Determine if user can manage reservations - wait for auth to load
-  const canManage = useMemo(() => !authLoading && canManageReservations(), [authLoading, canManageReservations])
-  const canCreateBill = useMemo(() => !authLoading && canManageBills(), [authLoading, canManageBills])
+  // Determine if user can manage reservations - check role directly for better reliability
+  // Priority: role > loading state (if role exists, use it immediately)
+  const canManage = useMemo(() => {
+    // If we have a role, check permissions directly (don't wait for loading)
+    if (role === 'frontdesk' || role === 'accounting') {
+      return true
+    }
+    // If no role yet, wait for loading to complete before showing/hiding
+    // This prevents flickering when switching tabs
+    if (authLoading) {
+      return false
+    }
+    // After loading completes, if still no role, user doesn't have permission
+    return false
+  }, [authLoading, role])
+  
+  const canCreateBill = useMemo(() => {
+    // If we have a role, check permissions directly (don't wait for loading)
+    if (role === 'accounting') {
+      return true
+    }
+    // If no role yet, wait for loading to complete before showing/hiding
+    // This prevents flickering when switching tabs
+    if (authLoading) {
+      return false
+    }
+    // After loading completes, if still no role, user doesn't have permission
+    return false
+  }, [authLoading, role])
 
   // Filter reservations based on search query
   const filteredReservations = useMemo(() => {
@@ -301,7 +327,7 @@ export const Reservations = () => {
               placeholder="Search by email or phone number..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             />
           </div>
           {searchQuery && (
@@ -462,15 +488,15 @@ export const Reservations = () => {
         }}
         title={editingReservation ? 'Edit Reservation' : 'Create Reservation'}
       >
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Room</label>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Room</label>
             <select 
               name="room_id" 
               required 
               value={formData.room_id}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             >
               <option value="">Select Room</option>
               {rooms?.map((room) => (
@@ -481,69 +507,69 @@ export const Reservations = () => {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Guest Name</label>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Guest Name</label>
             <input
               type="text"
               name="guest_name"
               required
               value={formData.guest_name}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Guest Email</label>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Guest Email</label>
             <input
               type="email"
               name="guest_email"
               required
               value={formData.guest_email}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Guest Phone</label>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Guest Phone</label>
             <input
               type="tel"
               name="guest_phone"
               required
               value={formData.guest_phone}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             />
           </div>
           <div className="grid grid-cols-2 gap-5">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Check-in</label>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Check-in</label>
               <input
                 type="date"
                 name="check_in"
                 required
                 value={formData.check_in}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Check-out</label>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Check-out</label>
               <input
                 type="date"
                 name="check_out"
                 required
                 value={formData.check_out}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Status</label>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Status</label>
             <select
               name="status"
               value={formData.status}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             >
               <option value="pending">Pending</option>
               <option value="confirmed">Confirmed</option>

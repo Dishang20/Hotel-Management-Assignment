@@ -11,8 +11,10 @@ import { useAuth } from '@/hooks/useAuth'
 import type { Room, RoomType, RoomStatus } from '@/types/database.types'
 
 export const Rooms = () => {
-  const { canManageRooms, loading: authLoading } = useAuth()
+  const { canManageRooms, loading: authLoading, role } = useAuth()
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [roomToDelete, setRoomToDelete] = useState<Room | null>(null)
   const [editingRoom, setEditingRoom] = useState<Room | null>(null)
   const [filters, setFilters] = useState<{ room_type?: RoomType; status?: RoomStatus }>({})
   const [currentPage, setCurrentPage] = useState(1)
@@ -25,7 +27,21 @@ export const Rooms = () => {
     setCurrentPage(1)
   }, [filters])
 
-  const canManage = useMemo(() => !authLoading && canManageRooms(), [authLoading, canManageRooms])
+  // Check if user can manage - check role directly for better reliability
+  // Priority: role > loading state (if role exists, use it immediately)
+  const canManage = useMemo(() => {
+    // If we have a role, check permissions directly (don't wait for loading)
+    if (role === 'frontdesk' || role === 'accounting') {
+      return true
+    }
+    // If no role yet, wait for loading to complete before showing/hiding
+    // This prevents flickering when switching tabs
+    if (authLoading) {
+      return false
+    }
+    // After loading completes, if still no role, user doesn't have permission
+    return false
+  }, [authLoading, role])
 
   const { data: rooms, isLoading, error } = useQuery({
     queryKey: ['rooms', filters],
@@ -78,12 +94,25 @@ export const Rooms = () => {
     mutationFn: roomsApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
+      setIsDeleteModalOpen(false)
+      setRoomToDelete(null)
       addNotification('Room deleted successfully', 'success')
     },
     onError: (error) => {
       addNotification(error instanceof Error ? error.message : 'Failed to delete room', 'error')
     },
   })
+
+  const handleDeleteClick = (room: Room) => {
+    setRoomToDelete(room)
+    setIsDeleteModalOpen(true)
+  }
+
+  const handleConfirmDelete = () => {
+    if (roomToDelete) {
+      deleteMutation.mutate(roomToDelete.id)
+    }
+  }
 
   const statusUpdateMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: RoomStatus }) =>
@@ -251,11 +280,7 @@ export const Rooms = () => {
                       <Button
                         variant="danger"
                         size="sm"
-                        onClick={() => {
-                          if (confirm('Are you sure you want to delete this room?')) {
-                            deleteMutation.mutate(room.id)
-                          }
-                        }}
+                        onClick={() => handleDeleteClick(room)}
                       >
                         Delete
                       </Button>
@@ -291,7 +316,7 @@ export const Rooms = () => {
         }}
         title={editingRoom ? 'Edit Room' : 'Add Room'}
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Room Number
@@ -357,6 +382,41 @@ export const Rooms = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          setIsDeleteModalOpen(false)
+          setRoomToDelete(null)
+        }}
+        title="Delete Room"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-700 dark:text-gray-300">
+            Are you sure you want to delete room <strong>{roomToDelete?.room_number}</strong>? This action cannot be undone.
+          </p>
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteModalOpen(false)
+                setRoomToDelete(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleConfirmDelete}
+              isLoading={deleteMutation.isPending}
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   )

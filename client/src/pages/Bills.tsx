@@ -12,6 +12,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Table, TableRow, TableCell } from '@/components/ui/Table'
 import { Pagination } from '@/components/ui/Pagination'
 import { FileUpload } from '@/components/ui/FileUpload'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { useUIStore } from '@/store/uiStore'
 import type { BillStatus } from '@/types/database.types'
 
@@ -26,6 +27,7 @@ export const Bills = () => {
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null)
   const [reservationSearchQuery, setReservationSearchQuery] = useState('')
+  const [selectedReservationId, setSelectedReservationId] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
   const queryClient = useQueryClient()
@@ -61,21 +63,41 @@ export const Bills = () => {
     (reservation) => reservation.status !== 'cancelled'
   ) || []
 
+  // Helper function to normalize phone numbers (remove all non-digit characters)
+  const normalizePhone = (phone: string): string => {
+    return phone.replace(/\D/g, '')
+  }
+
   // Filter reservations based on search query
-  const filteredReservationsForBill = availableReservations.filter((reservation) => {
-    if (!reservationSearchQuery.trim()) return true
+  const filteredReservationsForBill = useMemo(() => {
+    if (!reservationSearchQuery.trim()) return availableReservations
+    
     const query = reservationSearchQuery.toLowerCase().trim()
-    const guestName = reservation.guest_name?.toLowerCase() || ''
-    const guestEmail = reservation.guest_email?.toLowerCase() || ''
-    const guestPhone = reservation.guest_phone?.toLowerCase() || ''
-    const roomNumber = reservation.rooms?.room_number?.toLowerCase() || ''
-    return (
-      guestName.includes(query) ||
-      guestEmail.includes(query) ||
-      guestPhone.includes(query) ||
-      roomNumber.includes(query)
-    )
-  })
+    const normalizedQuery = normalizePhone(query) // Normalize query for phone comparison
+    
+    return availableReservations.filter((reservation) => {
+      const guestName = reservation.guest_name?.toLowerCase() || ''
+      const guestEmail = reservation.guest_email?.toLowerCase() || ''
+      const guestPhone = reservation.guest_phone || ''
+      const normalizedPhone = normalizePhone(guestPhone)
+      
+      // Handle rooms - can be array or object
+      let roomNumber = ''
+      if (Array.isArray(reservation.rooms)) {
+        roomNumber = reservation.rooms[0]?.room_number?.toString().toLowerCase() || ''
+      } else if (reservation.rooms) {
+        roomNumber = reservation.rooms.room_number?.toString().toLowerCase() || ''
+      }
+      
+      return (
+        guestName.includes(query) ||
+        guestEmail.includes(query) ||
+        guestPhone.toLowerCase().includes(query) ||
+        normalizedPhone.includes(normalizedQuery) ||
+        roomNumber.includes(query)
+      )
+    })
+  }, [availableReservations, reservationSearchQuery])
 
   const { data: billDetails } = useQuery({
     queryKey: ['bill', selectedBill],
@@ -120,6 +142,8 @@ export const Bills = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bills'] })
       setIsCreateModalOpen(false)
+      setSelectedReservationId('')
+      setReservationSearchQuery('')
       addNotification('Bill created successfully with room charges', 'success')
     },
     onError: (error) => {
@@ -259,20 +283,23 @@ export const Bills = () => {
 
   const handleCreateBill = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const formData = new FormData(e.currentTarget)
-    const reservationId = formData.get('reservation_id') as string
+    
+    if (!selectedReservationId) {
+      addNotification('Please select a reservation', 'error')
+      return
+    }
     
     // Validate reservation is not cancelled
-    const selectedReservation = reservations?.find(r => r.id === reservationId)
+    const selectedReservation = reservations?.find(r => r.id === selectedReservationId)
     if (selectedReservation?.status === 'cancelled') {
       addNotification('Cannot create bill for cancelled reservation', 'error')
       return
     }
     
-    createBillMutation.mutate({
-      reservation_id: reservationId,
-      status: 'draft' as BillStatus,
-    })
+      createBillMutation.mutate({
+        reservation_id: selectedReservationId,
+        status: 'draft' as BillStatus,
+      })
   }
 
   const handleAddItem = (e: React.FormEvent<HTMLFormElement>) => {
@@ -556,46 +583,43 @@ export const Bills = () => {
         onClose={() => {
           setIsCreateModalOpen(false)
           setReservationSearchQuery('')
+          setSelectedReservationId('')
         }}
         title="Create Bill"
       >
-        <form onSubmit={handleCreateBill} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Search Reservation
-            </label>
-            <input
-              type="text"
-              placeholder="Search by guest name, email, phone, or room number..."
-              value={reservationSearchQuery}
-              onChange={(e) => setReservationSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 mb-2"
-            />
-          </div>
+        <form onSubmit={handleCreateBill} className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Select Reservation
             </label>
-            <select
-              name="reservation_id"
+            <SearchableSelect
+              options={filteredReservationsForBill.map((reservation) => {
+                // Handle rooms - can be array or object
+                let roomNumber = 'N/A'
+                if (Array.isArray(reservation.rooms)) {
+                  roomNumber = reservation.rooms[0]?.room_number?.toString() || 'N/A'
+                } else if (reservation.rooms) {
+                  roomNumber = reservation.rooms.room_number?.toString() || 'N/A'
+                }
+                
+                return {
+                  value: reservation.id,
+                  label: `${reservation.guest_name} - Room ${roomNumber} (${reservation.status}) - ${reservation.guest_email}`,
+                }
+              })}
+              value={selectedReservationId}
+              onChange={setSelectedReservationId}
+              placeholder={
+                filteredReservationsForBill.length === 0
+                  ? reservationSearchQuery
+                    ? 'No reservations found matching your search'
+                    : 'No available reservations (cancelled reservations cannot have bills)'
+                  : 'Search by guest name, email, phone, or room number...'
+              }
+              searchPlaceholder="Search by guest name, email, phone, or room number..."
               required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-            >
-              <option value="">Select Reservation</option>
-              {filteredReservationsForBill.length > 0 ? (
-                filteredReservationsForBill.map((reservation) => (
-                  <option key={reservation.id} value={reservation.id}>
-                    {reservation.guest_name} - Room {reservation.rooms?.room_number || 'N/A'} ({reservation.status}) - {reservation.guest_email}
-                  </option>
-                ))
-              ) : (
-                <option value="" disabled>
-                  {reservationSearchQuery 
-                    ? 'No reservations found matching your search' 
-                    : 'No available reservations (cancelled reservations cannot have bills)'}
-                </option>
-              )}
-            </select>
+              onSearch={setReservationSearchQuery}
+            />
             {filteredReservationsForBill.length === 0 && reservationSearchQuery && (
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">No reservations found matching your search.</p>
             )}
@@ -622,8 +646,8 @@ export const Bills = () => {
         size="lg"
       >
         {billDetails && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 sm:p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
               <div>
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Guest Name</p>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{billDetails.reservations?.guest_name || 'N/A'}</p>
@@ -635,7 +659,7 @@ export const Bills = () => {
             </div>
 
             <div>
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2 pb-2 border-b border-gray-200 dark:border-gray-700">
                 <h3 className="text-base font-bold text-gray-900 dark:text-white">Bill Items</h3>
                 {!billDetails.paid && (
                   <Button
@@ -878,7 +902,7 @@ export const Bills = () => {
                 },
               })
             }}
-            className="space-y-4"
+            className="space-y-3"
           >
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
@@ -938,7 +962,7 @@ export const Bills = () => {
             </div>
           </div>
         ) : (
-          <form onSubmit={handleAddItem} className="space-y-4">
+          <form onSubmit={handleAddItem} className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Description
