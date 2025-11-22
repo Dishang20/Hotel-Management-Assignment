@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/useAuth'
 import type { Room, RoomType, RoomStatus } from '@/types/database.types'
 
 export const Rooms = () => {
-  const { canManageRooms, loading: authLoading, role } = useAuth()
+  const { loading: authLoading, role } = useAuth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [roomToDelete, setRoomToDelete] = useState<Room | null>(null)

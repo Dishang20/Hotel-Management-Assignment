@@ -14,7 +14,7 @@ import { useAuth } from '@/hooks/useAuth'
 import type { ReservationStatus } from '@/types/database.types'
 
 export const Reservations = () => {
-  const { canManageReservations, loading: authLoading, canManageBills, role } = useAuth()
+  const { loading: authLoading, role } = useAuth()
   const navigate = useNavigate()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingReservation, setEditingReservation] = useState<any>(null)
