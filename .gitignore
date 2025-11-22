@@ -35,3 +35,5 @@ lerna-debug.log*
 # Supabase
 .supabase/
 */.temp/*
+
+*/package-lock.json
