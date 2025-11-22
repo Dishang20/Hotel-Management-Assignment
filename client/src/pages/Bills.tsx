@@ -44,11 +44,12 @@ export const Bills = () => {
     }
   }, [searchParams, setSearchParams])
 
-  const { data: bills, isLoading, error: billsError } = useQuery({
+  const { data: bills, isLoading, error: billsError, refetch: refetchBills } = useQuery({
     queryKey: ['bills'],
     queryFn: () => billsApi.getAll(),
     retry: 1,
     refetchOnWindowFocus: false,
+    staleTime: 0, // Always consider data stale to allow refetching
   })
 
   const { data: reservations } = useQuery({
@@ -99,12 +100,13 @@ export const Bills = () => {
     })
   }, [availableReservations, reservationSearchQuery])
 
-  const { data: billDetails } = useQuery({
+  const { data: billDetails, refetch: refetchBillDetails } = useQuery({
     queryKey: ['bill', selectedBill],
     queryFn: () => (selectedBill ? billsApi.getById(selectedBill) : null),
     enabled: !!selectedBill,
     retry: 1,
     refetchOnWindowFocus: false,
+    staleTime: 0, // Always consider data stale to allow refetching
   })
 
   const { data: receipts } = useQuery({
@@ -452,9 +454,29 @@ export const Bills = () => {
           <Button
             variant="outline"
             onClick={async () => {
-              await queryClient.invalidateQueries({ queryKey: ['bills'] })
-              await queryClient.refetchQueries({ queryKey: ['bills'] })
-              addNotification('Bills refreshed', 'success')
+              try {
+                // Invalidate all bill-related queries to mark them as stale
+                await queryClient.invalidateQueries({ queryKey: ['bills'] })
+                await queryClient.invalidateQueries({ queryKey: ['bill'] })
+                
+                // Force refetch using the refetch function directly (bypasses cache)
+                const billsResult = await refetchBills()
+                
+                // If a bill is selected, also refetch its details
+                if (selectedBill && refetchBillDetails) {
+                  await refetchBillDetails()
+                }
+                
+                // Check if data was actually updated
+                if (billsResult.data) {
+                  addNotification('Bills refreshed', 'success')
+                } else {
+                  addNotification('No new data available', 'info')
+                }
+              } catch (error) {
+                console.error('[Bills] Refresh error:', error)
+                addNotification('Failed to refresh bills', 'error')
+              }
             }}
             disabled={isLoading}
           >
