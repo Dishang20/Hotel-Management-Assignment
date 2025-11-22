@@ -8,6 +8,7 @@ import { Rooms } from './pages/Rooms'
 import { Reservations } from './pages/Reservations'
 import { Bills } from './pages/Bills'
 import { Payment } from './pages/Payment'
+import { NotFound } from './pages/NotFound'
 
 function App() {
   return (
@@ -57,6 +58,7 @@ function App() {
           }
         />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   )
